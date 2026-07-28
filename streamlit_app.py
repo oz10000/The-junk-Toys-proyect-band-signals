@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
+from datetime import datetime, timedelta
 import numpy as np
 from data_engine import DataEngine
 from config import INITIAL_CAPITAL, DEFAULT_PARAMS
@@ -11,7 +11,7 @@ from utils import format_currency
 from signal_engine import Signal
 
 st.set_page_config(
-    page_title="🧸 Junk Toys Band Project 🧸",
+    page_title="🧸 Junk Toys Band Project",
     page_icon="🧸",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -49,49 +49,88 @@ with st.sidebar:
     use_hour_filter = st.checkbox("🕒 Filtro horario (Argentina)", value=True)
     trailing_mode = st.selectbox("🎯 Tipo de Trailing", ["Con activación", "Sin activación"], index=0)
     trailing_activation_enabled = (trailing_mode == "Con activación")
+    
     st.markdown("---")
     st.header("🚀 Acciones")
     run_backtest_btn = st.button("🧪 Ejecutar Backtesting", type="primary", use_container_width=True)
     st.markdown("---")
-    st.caption("🧸 Junk Toys v4.8 — Sin advertencias y siempre con datos")
+    st.caption("🧸 Junk Toys v4.9 — Con DataEngine funcional")
 
 tab1, tab2, tab3, tab4 = st.tabs(["📊 Señales en Vivo", "📈 Backtesting", "📉 Métricas", "🏆 Top 10 Long/Short"])
 
+# ============================================================
+# TAB 1: SEÑALES EN VIVO
+# ============================================================
 with tab1:
     st.header("📡 Ranking de Oportunidades (todos los activos)")
     with st.spinner("🔍 Escaneando el mercado..."):
         try:
+            # Inicializar DataEngine
             de = DataEngine()
-            symbols = de.get_common_pairs()
-            if not symbols:
-                symbols = ['BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'XRP/USDT',
-                           'DOGE/USDT', 'ADA/USDT', 'AVAX/USDT', 'DOT/USDT', 'LINK/USDT']
-            symbols = symbols[:20]
+            
+            # Obtener pares con volumen mínimo
+            symbols = de.get_usdt_pairs(min_volume_usd=200000, max_pairs=50)
+            st.info(f"📊 Escaneando {len(symbols)} activos con volumen > $200,000")
 
             data = {}
             using_sample = False
-            for sym in symbols:
-                df = de.download_historical(sym, days=7)
-                if df.empty:
-                    df = de.get_sample_data(sym, days=7)
-                    using_sample = True
-                if not df.empty:
+            
+            for sym in symbols[:20]:  # Limitamos a 20 para velocidad en Streamlit
+                df = de.fetch_ohlcv(sym, timeframe='5m', limit=300)
+                if df is not None and not df.empty:
                     data[sym] = df
-
-            if using_sample:
-                st.info("🧸 Usando datos de muestra (sin conexión a Binance). Los resultados son ilustrativos.")
+                else:
+                    # Si falla, intentar con otro exchange
+                    for alt_ex in ['kucoin', 'bybit']:
+                        df = de.fetch_ohlcv(sym, timeframe='5m', limit=300, exchange_id=alt_ex)
+                        if df is not None and not df.empty:
+                            data[sym] = df
+                            break
 
             if not data:
-                st.error("🧸 No se pudieron generar datos para ningún activo. Verifica la instalación.")
-                st.stop()
+                st.warning("🧸 No se pudieron descargar datos reales. Usando datos de muestra...")
+                for sym in symbols[:10]:
+                    df = de.fetch_historical(sym, days=7)  # Intenta histórico
+                    if df is not None and not df.empty:
+                        data[sym] = df
+                    else:
+                        # Último recurso: generar datos sintéticos
+                        from data_engine import logger
+                        logger.warning(f"Generando datos sintéticos para {sym}")
+                        np.random.seed(42)
+                        periods = 288  # 1 día de velas de 5m
+                        base_price = 50000 if 'BTC' in sym else 3000 if 'ETH' in sym else 100
+                        trend = np.cumsum(np.random.randn(periods) * 0.001) + 1
+                        close = base_price * trend
+                        high = close * (1 + np.random.rand(periods) * 0.01)
+                        low = close * (1 - np.random.rand(periods) * 0.01)
+                        open_price = close * (1 + np.random.randn(periods) * 0.002)
+                        volume = np.random.rand(periods) * 1000000
+                        dates = pd.date_range(end=datetime.now(), periods=periods, freq='5min')
+                        df = pd.DataFrame({
+                            'open': open_price,
+                            'high': high,
+                            'low': low,
+                            'close': close,
+                            'volume': volume
+                        }, index=dates)
+                        data[sym] = df
+                        using_sample = True
 
+            if using_sample:
+                st.info("🧸 Usando datos de muestra (algunos activos no se pudieron obtener en tiempo real).")
+
+            # Generar señales
             all_signals = []
             for sym, df in data.items():
                 s = Signal(sym, df, DEFAULT_PARAMS)
                 all_signals.append(s)
 
+            # Clasificar por signo del score
             longs = [s for s in all_signals if s.score > 0]
             shorts = [s for s in all_signals if s.score < 0]
+            
+            # Ordenar por confianza o score absoluto
             longs.sort(key=lambda x: x.confidence if x.is_valid else abs(x.score), reverse=True)
             shorts.sort(key=lambda x: x.confidence if x.is_valid else abs(x.score), reverse=True)
 
@@ -164,6 +203,7 @@ with tab1:
                     else:
                         st.warning("No hay activos con score Short.")
 
+            # Estimación de tiempo
             st.markdown("---")
             st.subheader("⏳ Estimación de Próxima Señal Aprobada")
             signal_timestamps = []
@@ -197,33 +237,9 @@ with tab1:
                 else:
                     st.info("No hay suficientes datos para estimar el tiempo entre señales.")
             else:
-                st.info("No se han detectado señales válidas en los últimos días. Estimando basado en la cercanía de los indicadores...")
-                best_candidates = sorted(all_signals, key=lambda x: x.adx, reverse=True)[:5]
-                if best_candidates:
-                    distancias = []
-                    for s in best_candidates:
-                        score_gap = max(0, DEFAULT_PARAMS['min_score'] - abs(s.score))
-                        adx_gap = max(0, DEFAULT_PARAMS['adx_threshold'] - s.adx)
-                        ker_gap = max(0, DEFAULT_PARAMS['ker_threshold'] - s.ker)
-                        score_gap_norm = score_gap / DEFAULT_PARAMS['min_score'] if DEFAULT_PARAMS['min_score'] > 0 else 0
-                        adx_gap_norm = adx_gap / DEFAULT_PARAMS['adx_threshold'] if DEFAULT_PARAMS['adx_threshold'] > 0 else 0
-                        ker_gap_norm = ker_gap / DEFAULT_PARAMS['ker_threshold'] if DEFAULT_PARAMS['ker_threshold'] > 0 else 0
-                        minutos = (score_gap_norm * 30 + adx_gap_norm * 20 + ker_gap_norm * 20)
-                        distancias.append(minutos)
-                    if distancias:
-                        estimado = np.mean(distancias)
-                        st.metric(
-                            label="⏱️ Tiempo estimado hasta la próxima señal",
-                            value=f"{estimado:.0f} minutos",
-                            delta="Basado en la distancia a los umbrales"
-                        )
-                        mejor = best_candidates[0]
-                        st.caption(f"Mejor candidato: {mejor.symbol} (ADX {mejor.adx:.1f}, KER {mejor.ker:.2f})")
-                    else:
-                        st.info("No hay suficientes datos para estimar.")
-                else:
-                    st.info("No hay activos con ADX significativo. El mercado está muy lateral.")
+                st.info("No se detectaron señales válidas en el período analizado. El mercado podría estar en rango.")
 
+            # Mejor señal actual
             valid_signals = [s for s in all_signals if s.is_valid]
             if valid_signals:
                 best = max(valid_signals, key=lambda x: x.confidence)
@@ -241,33 +257,33 @@ with tab1:
 
         except Exception as e:
             st.error(f"Error al escanear: {e}")
-            st.info("🧸 Sugerencia: revisa tu conexión a Internet o usa datos de muestra.")
+            st.info("🧸 Sugerencia: revisa tu conexión a Internet. Si el problema persiste, revisa los logs.")
 
-# --- TAB 2: Backtesting --- (igual pero con width corregido)
+
+# ============================================================
+# TAB 2: BACKTESTING
+# ============================================================
 with tab2:
     st.header("🧪 Backtesting Completo 24/7")
     if run_backtest_btn:
         with st.spinner("🔄 Descargando datos históricos y ejecutando simulación..."):
             try:
                 de = DataEngine()
-                symbols = de.get_common_pairs()[:10]
+                symbols = de.get_usdt_pairs(min_volume_usd=200000, max_pairs=15)
                 if not symbols:
                     symbols = ['BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'XRP/USDT']
                 data = {}
-                using_sample = False
-                for sym in symbols:
-                    df = de.download_historical(sym, days=365)
-                    if df.empty:
-                        df = de.get_sample_data(sym, days=365)
-                        using_sample = True
-                    if not df.empty:
+                progress = st.progress(0)
+                for i, sym in enumerate(symbols[:10]):
+                    df = de.fetch_historical(sym, timeframe='5m', days=365)
+                    if df is not None and not df.empty:
                         data[sym] = df
-                if using_sample:
-                    st.info("🧸 Usando datos de muestra para el backtesting (sin conexión real).")
+                    progress.progress((i+1)/len(symbols[:10]))
+                
                 if not data:
-                    st.error("No se pudieron generar datos para el backtesting.")
+                    st.error("No se pudieron descargar datos para el backtesting.")
                 else:
-                    st.success("✅ Datos cargados.")
+                    st.success(f"✅ Datos cargados para {len(data)} activos.")
                     params = {'__global__': DEFAULT_PARAMS}
 
                     bt_with = Backtester(data, params, initial_capital=INITIAL_CAPITAL,
@@ -344,7 +360,10 @@ with tab2:
     else:
         st.info("🧸 Presiona el botón en la barra lateral para ejecutar el backtesting.")
 
-# --- TAB 3: Métricas --- (sin cambios)
+
+# ============================================================
+# TAB 3: MÉTRICAS
+# ============================================================
 with tab3:
     st.header("📊 Métricas del Sistema")
     st.info("🧸 Las métricas se actualizan al ejecutar el backtesting.")
@@ -354,22 +373,25 @@ with tab3:
     col3.metric("📉 Max Drawdown", "-6.8%", delta="Mejorado")
     col4.metric("⭐ Sharpe", "1.45", delta="+0.90")
 
-# --- TAB 4: Top 10 detallado --- (corregido width)
+
+# ============================================================
+# TAB 4: TOP 10 DETALLADO
+# ============================================================
 with tab4:
     st.header("🏆 Top 10 Long y Short (detallado)")
     with st.spinner("🔄 Actualizando ranking..."):
         try:
             de = DataEngine()
-            symbols = de.get_common_pairs()[:20]
+            symbols = de.get_usdt_pairs(min_volume_usd=200000, max_pairs=50)
             if not symbols:
                 symbols = ['BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'XRP/USDT']
+            
             data = {}
-            for sym in symbols:
-                df = de.download_historical(sym, days=7)
-                if df.empty:
-                    df = de.get_sample_data(sym, days=7)
-                if not df.empty:
+            for sym in symbols[:20]:
+                df = de.fetch_ohlcv(sym, timeframe='5m', limit=300)
+                if df is not None and not df.empty:
                     data[sym] = df
+            
             if not data:
                 st.warning("No se pudieron obtener datos para el ranking.")
             else:
@@ -377,6 +399,7 @@ with tab4:
                 for sym, df in data.items():
                     s = Signal(sym, df, DEFAULT_PARAMS)
                     all_signals.append(s)
+                
                 longs = [s for s in all_signals if s.score > 0]
                 shorts = [s for s in all_signals if s.score < 0]
                 longs.sort(key=lambda x: x.confidence if x.is_valid else abs(x.score), reverse=True)
@@ -423,4 +446,4 @@ with tab4:
             st.error(f"Error al obtener ranking: {e}")
 
 st.markdown("---")
-st.caption("🧸 Junk Toys Band Project v4.8 — Siempre con datos, sin advertencias. 🧸🐻🎉")
+st.caption("🧸 Junk Toys Band Project v4.9 — DataEngine funcional con múltiples exchanges. 🧸🐻🎉")
