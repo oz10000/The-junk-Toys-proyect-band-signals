@@ -38,6 +38,12 @@ class DataEngine:
             ]
             config.MAX_LEVERAGE_BY_ASSET = {sym: 10 for sym in config.UNIVERSE}
 
+    def get_common_pairs(self):
+        """Retorna el universo de activos comunes (intersección Binance Spot ∩ Bybit Futures)."""
+        if not config.UNIVERSE:
+            self._build_universe()
+        return config.UNIVERSE
+
     def fetch_ohlcv(self, symbol, timeframe='5m', limit=1000, since=None):
         try:
             return self.exchange.fetch_ohlcv(symbol, timeframe, since=since, limit=limit)
