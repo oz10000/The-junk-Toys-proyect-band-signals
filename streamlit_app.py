@@ -11,7 +11,7 @@ from utils import format_currency
 from signal_engine import Signal
 
 st.set_page_config(
-    page_title="🧸 Shank Toys Project Band",
+    page_title="🧸 Junk Toys Project Band",
     page_icon="🧸",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -44,7 +44,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🧸🎉 THE SHANK TOYS PROJECT BAND 🎉🧸")
+st.title("🧸🎉 JUNK TOYS PROJECT BAND 🎉🧸")
 st.subheader("📡 Señales y Estrategias para Bybit Futures")
 st.markdown("---")
 
@@ -58,7 +58,7 @@ with st.sidebar:
     st.header("🚀 Acciones")
     run_backtest_btn = st.button("🧪 Ejecutar Backtesting", type="primary", use_container_width=True)
     st.markdown("---")
-    st.caption("🧸 Shank Toys v4.3 — Ranking con aprobación y estimación de tiempo")
+    st.caption("🧸 Junk Toys v4.4 — Ranking con aprobación y estimación de tiempo")
 
 tab1, tab2, tab3, tab4 = st.tabs(["📊 Señales en Vivo", "📈 Backtesting", "📉 Métricas", "🏆 Top 10 Long/Short"])
 
@@ -76,32 +76,22 @@ with tab1:
 
             # Generar señales para TODOS los activos (incluidos los no válidos)
             all_signals = []
-            signal_timestamps = []
             for sym, df in data.items():
                 s = Signal(sym, df, DEFAULT_PARAMS)
                 all_signals.append(s)
-                if s.is_valid:
-                    signal_timestamps.append(df.index[-1])
 
-            # Separar Long y Short según la dirección (incluso si no son válidos)
-            # Ordenar por score absoluto (mayor confianza)
-            longs = sorted([s for s in all_signals if s.direction == 'Long' and s.score > 0],
-                           key=lambda x: x.confidence, reverse=True)
-            shorts = sorted([s for s in all_signals if s.direction == 'Short' and s.score < 0],
-                            key=lambda x: x.confidence, reverse=True)
+            # Clasificar por signo del score (independientemente de aprobación)
+            # Si score > 0 => Long, si score < 0 => Short, si score ≈ 0 => sin dirección
+            longs = [s for s in all_signals if s.score > 0]
+            shorts = [s for s in all_signals if s.score < 0]
 
-            # Si no hay suficientes, mostrar los que tienen score más alto (aunque no cumplan)
-            if not longs:
-                # Tomar los que tienen score positivo (incluso si no aprobaron)
-                longs = sorted([s for s in all_signals if s.score > 0],
-                               key=lambda x: abs(x.score), reverse=True)
-            if not shorts:
-                shorts = sorted([s for s in all_signals if s.score < 0],
-                                key=lambda x: abs(x.score), reverse=True)
+            # Ordenar por confianza o por score absoluto
+            longs.sort(key=lambda x: x.confidence if x.is_valid else abs(x.score), reverse=True)
+            shorts.sort(key=lambda x: x.confidence if x.is_valid else abs(x.score), reverse=True)
 
             col1, col2 = st.columns(2)
             with col1:
-                st.subheader("🟢 Top 10 Long (por confianza)")
+                st.subheader("🟢 Top 10 Long (por score positivo)")
                 if longs:
                     data_long = []
                     for i, s in enumerate(longs[:10]):
@@ -113,17 +103,17 @@ with tab1:
                             'Score': round(s.score, 3),
                             'ADX': round(s.adx, 1),
                             'KER': round(s.ker, 2),
-                            'Confianza': f"{s.confidence*100:.1f}%",
+                            'Confianza': f"{s.confidence*100:.1f}%" if s.is_valid else "N/A",
                             'Aprobado': aprobado,
                             'Motivo': motivo
                         })
                     df_long = pd.DataFrame(data_long)
                     st.dataframe(df_long, use_container_width=True, hide_index=True)
                 else:
-                    st.warning("No hay señales Long (ni siquiera con score positivo)")
+                    st.warning("No hay activos con score Long (score > 0).")
 
             with col2:
-                st.subheader("🔴 Top 10 Short (por confianza)")
+                st.subheader("🔴 Top 10 Short (por score negativo)")
                 if shorts:
                     data_short = []
                     for i, s in enumerate(shorts[:10]):
@@ -135,19 +125,27 @@ with tab1:
                             'Score': round(s.score, 3),
                             'ADX': round(s.adx, 1),
                             'KER': round(s.ker, 2),
-                            'Confianza': f"{s.confidence*100:.1f}%",
+                            'Confianza': f"{s.confidence*100:.1f}%" if s.is_valid else "N/A",
                             'Aprobado': aprobado,
                             'Motivo': motivo
                         })
                     df_short = pd.DataFrame(data_short)
                     st.dataframe(df_short, use_container_width=True, hide_index=True)
                 else:
-                    st.warning("No hay señales Short (ni siquiera con score negativo)")
+                    st.warning("No hay activos con score Short (score < 0).")
 
             st.markdown("---")
             st.subheader("⏳ Estimación de Próxima Señal Aprobada")
 
-            # 1. Si hay señales válidas recientes, estimar basado en el intervalo promedio
+            # Recolectar timestamps de señales válidas recientes
+            signal_timestamps = []
+            for s in all_signals:
+                if s.is_valid:
+                    # Obtener el timestamp de la última vela del DataFrame
+                    df = data[s.symbol]
+                    if not df.empty:
+                        signal_timestamps.append(df.index[-1])
+
             if signal_timestamps:
                 signal_timestamps.sort()
                 diffs = []
@@ -172,28 +170,22 @@ with tab1:
                 else:
                     st.info("No hay suficientes datos para estimar el tiempo entre señales.")
             else:
-                # 2. Si no hay señales en 7 días, estimar basado en la distancia de los indicadores a los umbrales
-                #    Calculamos la proximidad promedio al score mínimo, ADX mínimo, etc.
-                st.info("No se han detectado señales válidas en los últimos 7 días. Estimando basado en la cercanía de los indicadores...")
-                # Calcular cuánto le falta al mejor activo para alcanzar el score mínimo, ADX, etc.
-                # Tomamos el mejor long y short por score absoluto
-                best_candidates = []
-                if longs:
-                    best_candidates.append(longs[0])
-                if shorts:
-                    best_candidates.append(shorts[0])
+                # No hay señales recientes -> estimar por distancia a umbrales
+                st.info("No se han detectado señales válidas en los últimos días. Estimando basado en la cercanía de los indicadores...")
+                # Tomar los mejores candidatos (los de mayor |score|)
+                best_candidates = sorted(all_signals, key=lambda x: abs(x.score), reverse=True)[:5]
                 if best_candidates:
-                    # Calcular la distancia promedio a los umbrales
                     distancias = []
                     for s in best_candidates:
+                        # Distancia al umbral mínimo de score
                         score_gap = max(0, DEFAULT_PARAMS['min_score'] - abs(s.score))
                         adx_gap = max(0, DEFAULT_PARAMS['adx_threshold'] - s.adx)
                         ker_gap = max(0, DEFAULT_PARAMS['ker_threshold'] - s.ker)
-                        # Normalizar distancias relativas
+                        # Normalizar (valores relativos)
                         score_gap_norm = score_gap / DEFAULT_PARAMS['min_score'] if DEFAULT_PARAMS['min_score'] > 0 else 0
                         adx_gap_norm = adx_gap / DEFAULT_PARAMS['adx_threshold'] if DEFAULT_PARAMS['adx_threshold'] > 0 else 0
                         ker_gap_norm = ker_gap / DEFAULT_PARAMS['ker_threshold'] if DEFAULT_PARAMS['ker_threshold'] > 0 else 0
-                        # Suponer que cada gap de 0.1 equivale a 30 minutos (basado en experiencia)
+                        # Suponer que cada unidad de gap equivale a 30 minutos (heuristico)
                         minutos = (score_gap_norm * 30 + adx_gap_norm * 20 + ker_gap_norm * 20)
                         distancias.append(minutos)
                     if distancias:
@@ -203,13 +195,15 @@ with tab1:
                             value=f"{estimado:.0f} minutos",
                             delta="Basado en la distancia a los umbrales"
                         )
-                        st.caption(f"Mejor candidato: {best_candidates[0].symbol} (score {best_candidates[0].score:.2f}, ADX {best_candidates[0].adx:.1f}, KER {best_candidates[0].ker:.2f})")
+                        # Mostrar el mejor candidato
+                        mejor = best_candidates[0]
+                        st.caption(f"Mejor candidato: {mejor.symbol} (score {mejor.score:.2f}, ADX {mejor.adx:.1f}, KER {mejor.ker:.2f})")
                     else:
                         st.info("No hay suficientes datos para estimar.")
                 else:
                     st.info("No hay activos con score significativo. El mercado está muy lateral.")
 
-            # Mostrar la mejor señal actual (si existe)
+            # Mostrar la mejor señal actual (si existe alguna válida)
             valid_signals = [s for s in all_signals if s.is_valid]
             if valid_signals:
                 best = max(valid_signals, key=lambda x: x.confidence)
@@ -223,12 +217,12 @@ with tab1:
                     })
                     st.dataframe(df_best, use_container_width=True, hide_index=True)
             else:
-                st.warning("No hay señales válidas en este momento.")
+                st.warning("No hay señales válidas en este momento. Espera a que se formen nuevas condiciones.")
 
         except Exception as e:
             st.error(f"Error al escanear: {e}")
 
-# --- TAB 2: Backtesting (igual que antes) ---
+# --- TAB 2: Backtesting ---
 with tab2:
     st.header("🧪 Backtesting Completo 24/7")
     if run_backtest_btn:
@@ -314,13 +308,13 @@ with tab2:
 
                 if not trades_with.empty:
                     csv = trades_with.to_csv(index=False)
-                    st.download_button("⬇️ Descargar trades (CSV)", data=csv, file_name="shank_toys_trades.csv")
+                    st.download_button("⬇️ Descargar trades (CSV)", data=csv, file_name="junk_toys_trades.csv")
             except Exception as e:
                 st.error(f"Error en el backtesting: {e}")
     else:
         st.info("🧸 Presiona el botón en la barra lateral para ejecutar el backtesting.")
 
-# --- TAB 3: Métricas (igual) ---
+# --- TAB 3: Métricas ---
 with tab3:
     st.header("📊 Métricas del Sistema")
     st.info("🧸 Las métricas se actualizan al ejecutar el backtesting.")
@@ -346,14 +340,10 @@ with tab4:
             for sym, df in data.items():
                 s = Signal(sym, df, DEFAULT_PARAMS)
                 all_signals.append(s)
-            longs = sorted([s for s in all_signals if s.direction == 'Long' and s.score > 0],
-                           key=lambda x: x.confidence, reverse=True)
-            shorts = sorted([s for s in all_signals if s.direction == 'Short' and s.score < 0],
-                            key=lambda x: x.confidence, reverse=True)
-            if not longs:
-                longs = sorted([s for s in all_signals if s.score > 0], key=lambda x: abs(x.score), reverse=True)
-            if not shorts:
-                shorts = sorted([s for s in all_signals if s.score < 0], key=lambda x: abs(x.score), reverse=True)
+            longs = [s for s in all_signals if s.score > 0]
+            shorts = [s for s in all_signals if s.score < 0]
+            longs.sort(key=lambda x: x.confidence if x.is_valid else abs(x.score), reverse=True)
+            shorts.sort(key=lambda x: x.confidence if x.is_valid else abs(x.score), reverse=True)
 
             col1, col2 = st.columns(2)
             with col1:
@@ -366,7 +356,7 @@ with tab4:
                             'Activo': s.symbol,
                             'Score': round(s.score, 3),
                             'ADX': round(s.adx, 1),
-                            'Confianza': f"{s.confidence*100:.1f}%",
+                            'Confianza': f"{s.confidence*100:.1f}%" if s.is_valid else "N/A",
                             'Aprobado': '✅' if s.is_valid else '❌',
                             'Motivo': s.reason if not s.is_valid else ''
                         })
@@ -384,7 +374,7 @@ with tab4:
                             'Activo': s.symbol,
                             'Score': round(s.score, 3),
                             'ADX': round(s.adx, 1),
-                            'Confianza': f"{s.confidence*100:.1f}%",
+                            'Confianza': f"{s.confidence*100:.1f}%" if s.is_valid else "N/A",
                             'Aprobado': '✅' if s.is_valid else '❌',
                             'Motivo': s.reason if not s.is_valid else ''
                         })
@@ -396,4 +386,4 @@ with tab4:
             st.error(f"Error al obtener ranking: {e}")
 
 st.markdown("---")
-st.caption("🧸 The Shank Toys Project Band v4.3 — Ranking siempre visible con aprobación y estimación de tiempo.")
+st.caption("🧸 Junk Toys Project Band v4.4 — Ranking siempre visible con aprobación y estimación de tiempo. 🧸🎉")
