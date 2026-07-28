@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime, timedelta
+from datetime import datetime
 import numpy as np
 from data_engine import DataEngine
 from config import INITIAL_CAPITAL, DEFAULT_PARAMS
@@ -11,12 +11,13 @@ from utils import format_currency
 from signal_engine import Signal
 
 st.set_page_config(
-    page_title="🧸 Junk Toys Project Band",
+    page_title="🧸 Junk Toys Band Project",
     page_icon="🧸",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
+# Estilo con colores más juguetones
 st.markdown("""
     <style>
         .reportview-container .main .block-container {
@@ -33,19 +34,15 @@ st.markdown("""
             font-weight: bold;
             font-size: 1.2rem;
         }
-        .approved {
-            color: green;
-            font-weight: bold;
-        }
-        .rejected {
-            color: red;
-            font-weight: bold;
-        }
+        .approved { color: green; font-weight: bold; }
+        .rejected { color: red; font-weight: bold; }
+        .neutral { color: orange; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🧸🎉 JUNK TOYS PROJECT BAND 🎉🧸")
-st.subheader("📡 Señales y Estrategias para Bybit Futures")
+# Título con muchos emojis
+st.title("🧸🎉🧸 JUNK TOYS BAND PROJECT 🧸🎉🧸")
+st.subheader("🐻📡 Señales y Estrategias para Bybit Futures 🐻")
 st.markdown("---")
 
 with st.sidebar:
@@ -58,7 +55,7 @@ with st.sidebar:
     st.header("🚀 Acciones")
     run_backtest_btn = st.button("🧪 Ejecutar Backtesting", type="primary", use_container_width=True)
     st.markdown("---")
-    st.caption("🧸 Junk Toys v4.4 — Ranking con aprobación y estimación de tiempo")
+    st.caption("🧸 Junk Toys v4.5 — Ranking forzado siempre visible")
 
 tab1, tab2, tab3, tab4 = st.tabs(["📊 Señales en Vivo", "📈 Backtesting", "📉 Métricas", "🏆 Top 10 Long/Short"])
 
@@ -74,65 +71,90 @@ with tab1:
                 if not df.empty:
                     data[sym] = df
 
-            # Generar señales para TODOS los activos (incluidos los no válidos)
+            # Generar señales para TODOS los activos
             all_signals = []
             for sym, df in data.items():
                 s = Signal(sym, df, DEFAULT_PARAMS)
                 all_signals.append(s)
 
-            # Clasificar por signo del score (independientemente de aprobación)
-            # Si score > 0 => Long, si score < 0 => Short, si score ≈ 0 => sin dirección
+            # Clasificar por signo del score
             longs = [s for s in all_signals if s.score > 0]
             shorts = [s for s in all_signals if s.score < 0]
+            neutrals = [s for s in all_signals if s.score == 0]
 
-            # Ordenar por confianza o por score absoluto
+            # Ordenar por confianza o score absoluto
             longs.sort(key=lambda x: x.confidence if x.is_valid else abs(x.score), reverse=True)
             shorts.sort(key=lambda x: x.confidence if x.is_valid else abs(x.score), reverse=True)
 
-            col1, col2 = st.columns(2)
-            with col1:
-                st.subheader("🟢 Top 10 Long (por score positivo)")
-                if longs:
-                    data_long = []
-                    for i, s in enumerate(longs[:10]):
-                        aprobado = "✅ Aprobado" if s.is_valid else "❌ Rechazado"
-                        motivo = s.reason if not s.is_valid else ""
-                        data_long.append({
-                            'Pos': i+1,
-                            'Activo': s.symbol,
-                            'Score': round(s.score, 3),
-                            'ADX': round(s.adx, 1),
-                            'KER': round(s.ker, 2),
-                            'Confianza': f"{s.confidence*100:.1f}%" if s.is_valid else "N/A",
-                            'Aprobado': aprobado,
-                            'Motivo': motivo
-                        })
-                    df_long = pd.DataFrame(data_long)
-                    st.dataframe(df_long, use_container_width=True, hide_index=True)
-                else:
-                    st.warning("No hay activos con score Long (score > 0).")
+            # Si no hay longs ni shorts, mostrar todos los activos ordenados por ADX
+            if not longs and not shorts:
+                st.info("🧸 No se detectan direcciones claras (score ≈ 0). Mostrando todos los activos ordenados por ADX (mayor tendencia).")
+                # Ordenar todos por ADX descendente
+                all_sorted = sorted(all_signals, key=lambda x: x.adx, reverse=True)
+                # Mostrar tabla única
+                data_all = []
+                for i, s in enumerate(all_sorted[:20]):
+                    aprobado = "✅ Aprobado" if s.is_valid else "❌ Rechazado"
+                    motivo = s.reason if not s.is_valid else ""
+                    data_all.append({
+                        'Pos': i+1,
+                        'Activo': s.symbol,
+                        'Score': round(s.score, 3),
+                        'ADX': round(s.adx, 1),
+                        'KER': round(s.ker, 2),
+                        'Confianza': f"{s.confidence*100:.1f}%" if s.is_valid else "N/A",
+                        'Aprobado': aprobado,
+                        'Motivo': motivo,
+                        'Dirección': 'Neutral'
+                    })
+                df_all = pd.DataFrame(data_all)
+                st.dataframe(df_all, use_container_width=True, hide_index=True)
+            else:
+                # Mostrar Top 10 Long y Top 10 Short
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.subheader("🟢 Top 10 Long (score > 0)")
+                    if longs:
+                        data_long = []
+                        for i, s in enumerate(longs[:10]):
+                            aprobado = "✅ Aprobado" if s.is_valid else "❌ Rechazado"
+                            motivo = s.reason if not s.is_valid else ""
+                            data_long.append({
+                                'Pos': i+1,
+                                'Activo': s.symbol,
+                                'Score': round(s.score, 3),
+                                'ADX': round(s.adx, 1),
+                                'KER': round(s.ker, 2),
+                                'Confianza': f"{s.confidence*100:.1f}%" if s.is_valid else "N/A",
+                                'Aprobado': aprobado,
+                                'Motivo': motivo
+                            })
+                        df_long = pd.DataFrame(data_long)
+                        st.dataframe(df_long, use_container_width=True, hide_index=True)
+                    else:
+                        st.warning("No hay activos con score Long (score > 0).")
 
-            with col2:
-                st.subheader("🔴 Top 10 Short (por score negativo)")
-                if shorts:
-                    data_short = []
-                    for i, s in enumerate(shorts[:10]):
-                        aprobado = "✅ Aprobado" if s.is_valid else "❌ Rechazado"
-                        motivo = s.reason if not s.is_valid else ""
-                        data_short.append({
-                            'Pos': i+1,
-                            'Activo': s.symbol,
-                            'Score': round(s.score, 3),
-                            'ADX': round(s.adx, 1),
-                            'KER': round(s.ker, 2),
-                            'Confianza': f"{s.confidence*100:.1f}%" if s.is_valid else "N/A",
-                            'Aprobado': aprobado,
-                            'Motivo': motivo
-                        })
-                    df_short = pd.DataFrame(data_short)
-                    st.dataframe(df_short, use_container_width=True, hide_index=True)
-                else:
-                    st.warning("No hay activos con score Short (score < 0).")
+                with col2:
+                    st.subheader("🔴 Top 10 Short (score < 0)")
+                    if shorts:
+                        data_short = []
+                        for i, s in enumerate(shorts[:10]):
+                            aprobado = "✅ Aprobado" if s.is_valid else "❌ Rechazado"
+                            motivo = s.reason if not s.is_valid else ""
+                            data_short.append({
+                                'Pos': i+1,
+                                'Activo': s.symbol,
+                                'Score': round(s.score, 3),
+                                'ADX': round(s.adx, 1),
+                                'KER': round(s.ker, 2),
+                                'Confianza': f"{s.confidence*100:.1f}%" if s.is_valid else "N/A",
+                                'Aprobado': aprobado,
+                                'Motivo': motivo
+                            })
+                        df_short = pd.DataFrame(data_short)
+                        st.dataframe(df_short, use_container_width=True, hide_index=True)
+                    else:
+                        st.warning("No hay activos con score Short (score < 0).")
 
             st.markdown("---")
             st.subheader("⏳ Estimación de Próxima Señal Aprobada")
@@ -141,7 +163,6 @@ with tab1:
             signal_timestamps = []
             for s in all_signals:
                 if s.is_valid:
-                    # Obtener el timestamp de la última vela del DataFrame
                     df = data[s.symbol]
                     if not df.empty:
                         signal_timestamps.append(df.index[-1])
@@ -170,22 +191,19 @@ with tab1:
                 else:
                     st.info("No hay suficientes datos para estimar el tiempo entre señales.")
             else:
-                # No hay señales recientes -> estimar por distancia a umbrales
+                # No hay señales recientes -> estimar por distancia a umbrales de los mejores ADX
                 st.info("No se han detectado señales válidas en los últimos días. Estimando basado en la cercanía de los indicadores...")
-                # Tomar los mejores candidatos (los de mayor |score|)
-                best_candidates = sorted(all_signals, key=lambda x: abs(x.score), reverse=True)[:5]
+                # Tomar los mejores candidatos (los de mayor ADX)
+                best_candidates = sorted(all_signals, key=lambda x: x.adx, reverse=True)[:5]
                 if best_candidates:
                     distancias = []
                     for s in best_candidates:
-                        # Distancia al umbral mínimo de score
                         score_gap = max(0, DEFAULT_PARAMS['min_score'] - abs(s.score))
                         adx_gap = max(0, DEFAULT_PARAMS['adx_threshold'] - s.adx)
                         ker_gap = max(0, DEFAULT_PARAMS['ker_threshold'] - s.ker)
-                        # Normalizar (valores relativos)
                         score_gap_norm = score_gap / DEFAULT_PARAMS['min_score'] if DEFAULT_PARAMS['min_score'] > 0 else 0
                         adx_gap_norm = adx_gap / DEFAULT_PARAMS['adx_threshold'] if DEFAULT_PARAMS['adx_threshold'] > 0 else 0
                         ker_gap_norm = ker_gap / DEFAULT_PARAMS['ker_threshold'] if DEFAULT_PARAMS['ker_threshold'] > 0 else 0
-                        # Suponer que cada unidad de gap equivale a 30 minutos (heuristico)
                         minutos = (score_gap_norm * 30 + adx_gap_norm * 20 + ker_gap_norm * 20)
                         distancias.append(minutos)
                     if distancias:
@@ -195,13 +213,12 @@ with tab1:
                             value=f"{estimado:.0f} minutos",
                             delta="Basado en la distancia a los umbrales"
                         )
-                        # Mostrar el mejor candidato
                         mejor = best_candidates[0]
-                        st.caption(f"Mejor candidato: {mejor.symbol} (score {mejor.score:.2f}, ADX {mejor.adx:.1f}, KER {mejor.ker:.2f})")
+                        st.caption(f"Mejor candidato: {mejor.symbol} (ADX {mejor.adx:.1f}, KER {mejor.ker:.2f})")
                     else:
                         st.info("No hay suficientes datos para estimar.")
                 else:
-                    st.info("No hay activos con score significativo. El mercado está muy lateral.")
+                    st.info("No hay activos con ADX significativo. El mercado está muy lateral.")
 
             # Mostrar la mejor señal actual (si existe alguna válida)
             valid_signals = [s for s in all_signals if s.is_valid]
@@ -222,7 +239,7 @@ with tab1:
         except Exception as e:
             st.error(f"Error al escanear: {e}")
 
-# --- TAB 2: Backtesting ---
+# --- TAB 2: Backtesting --- (sin cambios)
 with tab2:
     st.header("🧪 Backtesting Completo 24/7")
     if run_backtest_btn:
@@ -314,7 +331,7 @@ with tab2:
     else:
         st.info("🧸 Presiona el botón en la barra lateral para ejecutar el backtesting.")
 
-# --- TAB 3: Métricas ---
+# --- TAB 3: Métricas --- (sin cambios)
 with tab3:
     st.header("📊 Métricas del Sistema")
     st.info("🧸 Las métricas se actualizan al ejecutar el backtesting.")
@@ -324,7 +341,7 @@ with tab3:
     col3.metric("📉 Max Drawdown", "-6.8%", delta="Mejorado")
     col4.metric("⭐ Sharpe", "1.45", delta="+0.90")
 
-# --- TAB 4: Top 10 Long/Short detallado (redundante, pero se mantiene) ---
+# --- TAB 4: Top 10 Long/Short detallado --- (con la misma lógica)
 with tab4:
     st.header("🏆 Top 10 Long y Short (detallado)")
     with st.spinner("🔄 Actualizando ranking..."):
@@ -386,4 +403,4 @@ with tab4:
             st.error(f"Error al obtener ranking: {e}")
 
 st.markdown("---")
-st.caption("🧸 Junk Toys Project Band v4.4 — Ranking siempre visible con aprobación y estimación de tiempo. 🧸🎉")
+st.caption("🧸 Junk Toys Band Project v4.5 — Ranking forzado: siempre ves todos los activos. 🧸🎉")
