@@ -762,4 +762,3 @@ Operar en mercados financieros conlleva riesgo de pérdida total del capital.
 Consulte a un profesional antes de invertir.
 """)
 st.caption("🧸🐻🎉 混沌の中の自由 — 暗黒物質の王国で、私たちは自由です。")
-```
