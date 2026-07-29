@@ -1,12 +1,4 @@
-Aquí tienes el archivo `streamlit_app.py` corregido, optimizado y listo para copiar y pegar.
 
-```python
-# streamlit_app.py
-"""
-Junk Toys Band Project v5.3 — Señales y Estrategias para Bybit Futures
-Aplicación Streamlit con pestañas: señales en vivo, backtesting, métricas,
-ranking, audio/galería, manifiesto y guía de operativa.
-"""
 
 import streamlit as st
 import pandas as pd
