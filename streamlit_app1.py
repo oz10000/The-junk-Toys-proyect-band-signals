@@ -1,15 +1,16 @@
 
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
+from datetime import datetime, timedelta
 import numpy as np
 from data_engine import DataEngine
 from config import INITIAL_CAPITAL, DEFAULT_PARAMS
 from backtester import Backtester
 from utils import format_currency
 from signal_engine import Signal
+import base64
+import os
 
 # ============================================================
 # CONFIGURACIÓN DE PÁGINA
@@ -22,118 +23,111 @@ st.set_page_config(
 )
 
 # ============================================================
-# ESTILOS CSS
+# ESTILOS Y TEMA
 # ============================================================
-CSS_STYLES = """
-<style>
-    .reportview-container .main .block-container {
-        background: linear-gradient(145deg, #fdf6e3 0%, #fce8b2 100%);
-    }
-    .sidebar .sidebar-content {
-        background: #ffd700;
-    }
-    .stButton button {
-        background-color: #ff6b6b;
-        color: white;
-        border-radius: 20px;
-        border: 3px solid #ffd93d;
-        font-weight: bold;
-        font-size: 1.2rem;
-    }
-    .approved { color: green; font-weight: bold; }
-    .rejected { color: red; font-weight: bold; }
-    .neutral { color: orange; font-weight: bold; }
-    .manifiesto {
-        background-color: #2d2d2d;
-        color: #f0f0f0;
-        padding: 20px;
-        border-radius: 15px;
-        font-family: 'Courier New', monospace;
-        font-size: 14px;
-        line-height: 1.6;
-        border-left: 5px solid #ffd700;
-    }
-    .manifiesto-jp {
-        background-color: #1a1a2e;
-        color: #e0e0e0;
-        padding: 20px;
-        border-radius: 15px;
-        font-family: 'Noto Sans JP', 'MS Gothic', sans-serif;
-        font-size: 14px;
-        line-height: 1.8;
-        border-left: 5px solid #ff6b6b;
-    }
-    .audio-container {
-        background-color: #1a1a1a;
-        padding: 15px;
-        border-radius: 10px;
-        text-align: center;
-    }
-    .gallery-img {
-        border-radius: 10px;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-        margin: 5px;
-    }
-    .donation-box {
-        background-color: #2d2d2d;
-        color: #ffd700;
-        padding: 15px;
-        border-radius: 10px;
-        text-align: center;
-        font-family: monospace;
-        margin: 10px 0;
-    }
-    .disclaimer {
-        background-color: #fff3cd;
-        color: #856404;
-        padding: 15px;
-        border-radius: 10px;
-        border: 2px solid #ffc107;
-        font-size: 14px;
-        margin: 10px 0;
-    }
-</style>
-"""
-st.markdown(CSS_STYLES, unsafe_allow_html=True)
+st.markdown("""
+    <style>
+        .reportview-container .main .block-container {
+            background: linear-gradient(145deg, #fdf6e3 0%, #fce8b2 100%);
+        }
+        .sidebar .sidebar-content {
+            background: #ffd700;
+        }
+        .stButton button {
+            background-color: #ff6b6b;
+            color: white;
+            border-radius: 20px;
+            border: 3px solid #ffd93d;
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+        .approved { color: green; font-weight: bold; }
+        .rejected { color: red; font-weight: bold; }
+        .neutral { color: orange; font-weight: bold; }
+        .manifiesto {
+            background-color: #2d2d2d;
+            color: #f0f0f0;
+            padding: 20px;
+            border-radius: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            border-left: 5px solid #ffd700;
+        }
+        .manifiesto-jp {
+            background-color: #1a1a2e;
+            color: #e0e0e0;
+            padding: 20px;
+            border-radius: 15px;
+            font-family: 'Noto Sans JP', 'MS Gothic', sans-serif;
+            font-size: 14px;
+            line-height: 1.8;
+            border-left: 5px solid #ff6b6b;
+        }
+        .audio-container {
+            background-color: #1a1a1a;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .gallery-img {
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            margin: 5px;
+        }
+        .donation-box {
+            background-color: #2d2d2d;
+            color: #ffd700;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            font-family: monospace;
+            margin: 10px 0;
+        }
+        .disclaimer {
+            background-color: #fff3cd;
+            color: #856404;
+            padding: 15px;
+            border-radius: 10px;
+            border: 2px solid #ffc107;
+            font-size: 14px;
+            margin: 10px 0;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 # ============================================================
-# TÍTULO Y ENCABEZADO
+# TÍTULO PRINCIPAL
 # ============================================================
 st.title("🧸🎉🧸 JUNK TOYS BAND PROJECT 🧸🎉🧸")
 st.subheader("🐻🐻🐻 Señales y Estrategias para Bybit Futures 🐻🐻🐻")
 st.markdown("---")
 
 # ============================================================
-# DISCLAIMER LEGAL
+# DISCLAIMER LEGAL (siempre visible)
 # ============================================================
-with st.expander("⚠️ DISCLAIMER LEGAL / AVISO LEGAL", expanded=True):
-    st.markdown("""
-    <div class="disclaimer">
-    ⚠️ <b>DISCLAIMER LEGAL / AVISO LEGAL</b><br>
-    Este proyecto es <b>exclusivamente educativo y de entretenimiento</b>. 
-    No constituye asesoramiento financiero, de inversión ni de trading. 
-    El trading de criptomonedas y futuros conlleva <b>riesgo significativo de pérdida de capital</b>. 
-    Las señales y métricas mostradas son simulaciones basadas en datos históricos y no garantizan resultados futuros. 
-    <b>Consulte a un asesor financiero profesional</b> antes de tomar decisiones de inversión. 
-    Al utilizar este software, usted acepta que el autor no se hace responsable de ninguna pérdida financiera.
-    </div>
-    """, unsafe_allow_html=True)
+st.markdown("""
+<div class="disclaimer">
+⚠️ <b>DISCLAIMER LEGAL / AVISO LEGAL</b><br>
+Este proyecto es <b>exclusivamente educativo y de entretenimiento</b>. 
+No constituye asesoramiento financiero, de inversión ni de trading. 
+El trading de criptomonedas y futuros conlleva <b>riesgo significativo de pérdida de capital</b>. 
+Las señales y métricas mostradas son simulaciones basadas en datos históricos y no garantizan resultados futuros. 
+<b>Consulte a un asesor financiero profesional</b> antes de tomar decisiones de inversión. 
+Al utilizar este software, usted acepta que el autor no se hace responsable de ninguna pérdida financiera.
+</div>
+""", unsafe_allow_html=True)
+
 st.markdown("---")
 
 # ============================================================
-# SIDEBAR
+# SIDEBAR (configuración + donaciones)
 # ============================================================
 with st.sidebar:
     st.image("https://img.icons8.com/emoji/96/000000/teddy-bear-emoji.png", width=80)
     st.header("⚙️ Configuración")
-    use_hour_filter = st.checkbox("🕒 Filtro horario (Argentina)", value=True,
-                                 help="Filtra operaciones por horario local argentino (13–23hs)")
-    trailing_mode = st.selectbox(
-        "🎯 Tipo de Trailing",
-        ["Con activación", "Sin activación"],
-        index=0,
-        help="Con activación: trailing stop se activa tras alcanzar un % de ganancia. Sin activación: activo siempre."
-    )
+    use_hour_filter = st.checkbox("🕒 Filtro horario (Argentina)", value=True)
+    trailing_mode = st.selectbox("🎯 Tipo de Trailing", ["Con activación", "Sin activación"], index=0)
     trailing_activation_enabled = (trailing_mode == "Con activación")
     
     st.markdown("---")
@@ -141,132 +135,17 @@ with st.sidebar:
     run_backtest_btn = st.button("🧪 Ejecutar Backtesting", type="primary", use_container_width=True)
     st.markdown("---")
     
+    # ===== DONACIONES =====
     st.header("💜 Apoya el proyecto")
     st.markdown("""
     **Alias (Prex):** `walywasaby`  
     **USDT (TRC20):**  
     `TCiRVXggAqDx6bhJH5KBdf8E4NcJ2voMf8`
     """)
-    st.caption("🧸 Junk Toys v5.3 — Con ❤️")
+    st.caption("🧸 Junk Toys v5.2 — Con ❤️")
 
 # ============================================================
-# FUNCIONES AUXILIARES CON CACHÉ
-# ============================================================
-@st.cache_data(ttl=120)
-def fetch_live_data(max_pairs: int = 50, top_n: int = 20):
-    """Obtiene OHLCV 5m para los pares con mayor volumen USDT. Retorna {symbol: DataFrame}."""
-    de = DataEngine()
-    symbols = de.get_usdt_pairs(min_volume_usd=200000, max_pairs=max_pairs)
-    if not symbols:
-        symbols = ['BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'XRP/USDT']
-
-    data = {}
-    for sym in symbols[:top_n]:
-        df = de.fetch_ohlcv(sym, timeframe='5m', limit=300)
-        if df is not None and not df.empty:
-            data[sym] = df
-        else:
-            for alt_ex in ['kucoin', 'bybit']:
-                df = de.fetch_ohlcv(sym, timeframe='5m', limit=300, exchange_id=alt_ex)
-                if df is not None and not df.empty:
-                    data[sym] = df
-                    break
-            if sym not in data:
-                # Datos sintéticos de respaldo
-                np.random.seed(42 + hash(sym) % 100)
-                periods = 300
-                base_price = 50000 if 'BTC' in sym else 3000 if 'ETH' in sym else 100
-                trend = np.cumsum(np.random.randn(periods) * 0.001) + 1
-                close = base_price * trend
-                high = close * (1 + np.random.rand(periods) * 0.01)
-                low = close * (1 - np.random.rand(periods) * 0.01)
-                open_price = close * (1 + np.random.randn(periods) * 0.002)
-                volume = np.random.rand(periods) * 1000000
-                dates = pd.date_range(end=datetime.now(), periods=periods, freq='5min')
-                df = pd.DataFrame({
-                    'open': open_price, 'high': high, 'low': low,
-                    'close': close, 'volume': volume
-                }, index=dates)
-                data[sym] = df
-    return data
-
-@st.cache_data(ttl=300)
-def generate_signals(_data: dict, params: dict = DEFAULT_PARAMS):
-    """Genera objetos Signal para todos los símbolos. Retorna (señales, lista de errores)."""
-    signals = []
-    errors = []
-    for sym, df in _data.items():
-        try:
-            s = Signal(sym, df, params)
-            signals.append(s)
-        except Exception as e:
-            errors.append((sym, str(e)))
-    return signals, errors
-
-def build_signal_row(signal, idx: int) -> dict:
-    """Convierte un objeto Signal (o None) en un diccionario para tabla."""
-    if signal is None:
-        return {
-            'Pos': idx, 'Activo': 'N/A', 'Score': 'N/A', 'ADX': 'N/A',
-            'KER': 'N/A', 'Confianza': 'N/A', 'Aprobado': 'N/A',
-            'Motivo': 'No hay suficientes señales', 'Precio': 'N/A',
-            'SL': 'N/A', 'TP': 'N/A', 'Trailing Act.': 'N/A',
-            'Trailing Dist.': 'N/A', 'BE Trigger': 'N/A', 'Apalancamiento': 'N/A'
-        }
-    aprobado = "✅ Aprobado" if signal.is_valid else "❌ Rechazado"
-    motivo = signal.reason if not signal.is_valid else ""
-    return {
-        'Pos': idx,
-        'Activo': signal.symbol,
-        'Score': round(signal.score, 3),
-        'ADX': round(signal.adx, 1),
-        'KER': round(signal.ker, 2),
-        'Confianza': f"{signal.confidence*100:.1f}%" if signal.is_valid else "N/A",
-        'Aprobado': aprobado,
-        'Motivo': motivo,
-        'Precio': round(signal.entry_price, 2) if signal.is_valid else 'N/A',
-        'SL': round(signal.sl_price, 2) if signal.is_valid else 'N/A',
-        'TP': round(signal.tp_price, 2) if signal.is_valid else 'N/A',
-        'Trailing Act.': f"{signal.trailing_activation*100:.1f}%" if signal.is_valid else 'N/A',
-        'Trailing Dist.': f"{signal.trailing_distance*100:.1f}%" if signal.is_valid else 'N/A',
-        'BE Trigger': f"{signal.break_even_trigger*100:.1f}%" if signal.is_valid else 'N/A',
-        'Apalancamiento': '3x' if signal.is_valid else 'N/A'
-    }
-
-def pad_list(items: list, target: int = 10, fill_value=None) -> list:
-    """Rellena una lista hasta alcanzar 'target' elementos."""
-    result = items[:target]
-    while len(result) < target:
-        result.append(fill_value)
-    return result
-
-def show_signal_details(signal):
-    """Muestra detalles JSON de una señal válida en un expander."""
-    if not signal.is_valid:
-        return
-    with st.expander(f"📋 Detalles completos: {signal.symbol} ({signal.direction})"):
-        st.json({
-            "Activo": signal.symbol,
-            "Dirección": signal.direction,
-            "Score": signal.score,
-            "ADX": signal.adx,
-            "KER": signal.ker,
-            "Régimen": signal.regime,
-            "Confianza": signal.confidence,
-            "Precio entrada": signal.entry_price,
-            "Stop Loss": signal.sl_price,
-            "Take Profit": signal.tp_price,
-            "Trailing Activación": signal.trailing_activation,
-            "Trailing Distancia": signal.trailing_distance,
-            "Break Even Trigger": signal.break_even_trigger,
-            "Break Even Buffer": signal.break_even_buffer,
-            "Tiempo máximo (min)": signal.max_hold_minutes,
-            "Apalancamiento recomendado": "3x (ajustable)",
-            "Motivo de aprobación": "Todos los filtros superados"
-        })
-
-# ============================================================
-# PESTAÑAS PRINCIPALES
+# PESTAÑAS
 # ============================================================
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📊 Señales en Vivo",
@@ -279,139 +158,309 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
 ])
 
 # ============================================================
-# TAB 1: SEÑALES EN VIVO
+# TAB 1: SEÑALES EN VIVO (con detalles expandibles)
 # ============================================================
 with tab1:
     st.header("📡 Ranking de Oportunidades (todos los activos)")
-
     with st.spinner("🔍 Escaneando el mercado..."):
-        data_dict = fetch_live_data(max_pairs=50, top_n=20)
-    st.info(f"📊 Escaneando {len(data_dict)} activos con volumen > $200,000")
+        try:
+            de = DataEngine()
+            symbols = de.get_usdt_pairs(min_volume_usd=200000, max_pairs=50)
+            st.info(f"📊 Escaneando {len(symbols)} activos con volumen > $200,000")
 
-    all_signals, signal_errors = generate_signals(data_dict, DEFAULT_PARAMS)
-    if signal_errors:
-        for sym, err in signal_errors:
-            st.warning(f"Error procesando {sym}: {err}")
+            data = {}
+            for sym in symbols[:20]:
+                df = de.fetch_ohlcv(sym, timeframe='5m', limit=300)
+                if df is not None and not df.empty:
+                    data[sym] = df
+                else:
+                    for alt_ex in ['kucoin', 'bybit']:
+                        df = de.fetch_ohlcv(sym, timeframe='5m', limit=300, exchange_id=alt_ex)
+                        if df is not None and not df.empty:
+                            data[sym] = df
+                            break
 
-    longs = [s for s in all_signals if s.score > 0]
-    shorts = [s for s in all_signals if s.score < 0]
-    longs.sort(key=lambda x: abs(x.score), reverse=True)
-    shorts.sort(key=lambda x: abs(x.score), reverse=True)
+            if not data:
+                st.warning("🧸 No se pudieron descargar datos reales. Usando datos de muestra...")
+                for sym in symbols[:10]:
+                    np.random.seed(42 + hash(sym) % 100)
+                    periods = 300
+                    base_price = 50000 if 'BTC' in sym else 3000 if 'ETH' in sym else 100
+                    trend = np.cumsum(np.random.randn(periods) * 0.001) + 1
+                    close = base_price * trend
+                    high = close * (1 + np.random.rand(periods) * 0.01)
+                    low = close * (1 - np.random.rand(periods) * 0.01)
+                    open_price = close * (1 + np.random.randn(periods) * 0.002)
+                    volume = np.random.rand(periods) * 1000000
+                    dates = pd.date_range(end=datetime.now(), periods=periods, freq='5min')
+                    df = pd.DataFrame({
+                        'open': open_price,
+                        'high': high,
+                        'low': low,
+                        'close': close,
+                        'volume': volume
+                    }, index=dates)
+                    data[sym] = df
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("🟢 Top 10 Long (score > 0)")
-        df_long = pd.DataFrame([build_signal_row(s, i+1) for i, s in enumerate(pad_list(longs, 10))])
-        st.dataframe(df_long, width='stretch', hide_index=True)
-        for s in longs:
-            show_signal_details(s)
+            all_signals = []
+            for sym, df in data.items():
+                s = Signal(sym, df, DEFAULT_PARAMS)
+                all_signals.append(s)
 
-    with col2:
-        st.subheader("🔴 Top 10 Short (score < 0)")
-        df_short = pd.DataFrame([build_signal_row(s, i+1) for i, s in enumerate(pad_list(shorts, 10))])
-        st.dataframe(df_short, width='stretch', hide_index=True)
-        for s in shorts:
-            show_signal_details(s)
+            longs = [s for s in all_signals if s.score > 0]
+            shorts = [s for s in all_signals if s.score < 0]
+            longs.sort(key=lambda x: abs(x.score), reverse=True)
+            shorts.sort(key=lambda x: abs(x.score), reverse=True)
 
-    # Estimación de próxima señal aprobada
-    st.markdown("---")
-    st.subheader("⏳ Estimación de Próxima Señal Aprobada")
-    signal_times = []
-    for s in all_signals:
-        if s.is_valid:
-            df = data_dict.get(s.symbol)
-            if df is not None and not df.empty:
-                signal_times.append(df.index[-1])
+            def pad_list(items, target=10, fill_value=None):
+                result = items[:target]
+                while len(result) < target:
+                    result.append(fill_value)
+                return result
 
-    if len(signal_times) >= 2:
-        signal_times.sort()
-        diffs = []
-        for i in range(1, len(signal_times)):
-            diff = (signal_times[i] - signal_times[i-1]).total_seconds() / 60
-            if diff > 0:
-                diffs.append(diff)
-        if diffs:
-            avg_interval = np.mean(diffs)
-            last_time = signal_times[-1]
-            now = datetime.now(last_time.tzinfo) if last_time.tzinfo else datetime.now()
-            time_since_last = (now - last_time).total_seconds() / 60
-            remaining = max(0, avg_interval - time_since_last)
-            st.metric("⏱️ Tiempo estimado hasta la próxima señal", f"{remaining:.0f} min",
-                      delta=f"Promedio histórico: {avg_interval:.0f} min")
-            st.caption(f"Última señal hace {time_since_last:.0f} minutos")
-            if time_since_last > 120:
-                st.info("🔄 Más de 2 horas sin señal. Considera reanalizar el mercado.")
-        else:
-            st.info("No hay suficientes intervalos para estimar.")
-    else:
-        st.info("No se detectaron señales válidas en este momento.")
+            longs_padded = pad_list(longs, 10)
+            shorts_padded = pad_list(shorts, 10)
 
-    valid_signals = [s for s in all_signals if s.is_valid]
-    if valid_signals:
-        best = max(valid_signals, key=lambda x: x.confidence)
-        st.success(f"🧸 **Mejor señal actual:** {best.symbol} ({best.direction}) con confianza {best.confidence*100:.1f}%")
-        with st.expander("📋 Resumen de la mejor señal"):
-            st.json({
-                "Activo": best.symbol,
-                "Dirección": best.direction,
-                "Precio entrada": best.entry_price,
-                "Stop Loss": best.sl_price,
-                "Take Profit": best.tp_price,
-                "Trailing Activación": best.trailing_activation,
-                "Trailing Distancia": best.trailing_distance,
-                "Break Even Trigger": best.break_even_trigger,
-                "Confianza": best.confidence,
-                "Régimen": best.regime
-            })
-    else:
-        st.warning("No hay señales válidas ahora. Espera nuevas condiciones de mercado.")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader("🟢 Top 10 Long (score > 0)")
+                if longs_padded:
+                    data_long = []
+                    for i, s in enumerate(longs_padded):
+                        if s is None:
+                            data_long.append({
+                                'Pos': i+1,
+                                'Activo': 'N/A',
+                                'Score': 'N/A',
+                                'ADX': 'N/A',
+                                'KER': 'N/A',
+                                'Confianza': 'N/A',
+                                'Aprobado': 'N/A',
+                                'Motivo': 'No hay suficientes longs',
+                                'Precio': 'N/A',
+                                'SL': 'N/A',
+                                'TP': 'N/A',
+                                'Trailing Act.': 'N/A',
+                                'Trailing Dist.': 'N/A',
+                                'BE Trigger': 'N/A',
+                                'Apalancamiento': 'N/A'
+                            })
+                        else:
+                            aprobado = "✅ Aprobado" if s.is_valid else "❌ Rechazado"
+                            motivo = s.reason if not s.is_valid else ""
+                            data_long.append({
+                                'Pos': i+1,
+                                'Activo': s.symbol,
+                                'Score': round(s.score, 3),
+                                'ADX': round(s.adx, 1),
+                                'KER': round(s.ker, 2),
+                                'Confianza': f"{s.confidence*100:.1f}%" if s.is_valid else "N/A",
+                                'Aprobado': aprobado,
+                                'Motivo': motivo,
+                                'Precio': round(s.entry_price, 2) if s.is_valid else 'N/A',
+                                'SL': round(s.sl_price, 2) if s.is_valid else 'N/A',
+                                'TP': round(s.tp_price, 2) if s.is_valid else 'N/A',
+                                'Trailing Act.': f"{s.trailing_activation*100:.1f}%" if s.is_valid else 'N/A',
+                                'Trailing Dist.': f"{s.trailing_distance*100:.1f}%" if s.is_valid else 'N/A',
+                                'BE Trigger': f"{s.break_even_trigger*100:.1f}%" if s.is_valid else 'N/A',
+                                'Apalancamiento': '3x' if s.is_valid else 'N/A'
+                            })
+                    df_long = pd.DataFrame(data_long)
+                    st.dataframe(df_long, width='stretch', hide_index=True)
+                    
+                    for s in longs:
+                        if s.is_valid:
+                            with st.expander(f"📋 Detalles completos: {s.symbol} ({s.direction})"):
+                                st.json({
+                                    "Activo": s.symbol,
+                                    "Dirección": s.direction,
+                                    "Score": s.score,
+                                    "ADX": s.adx,
+                                    "KER": s.ker,
+                                    "Régimen": s.regime,
+                                    "Confianza": s.confidence,
+                                    "Precio entrada": s.entry_price,
+                                    "Stop Loss": s.sl_price,
+                                    "Take Profit": s.tp_price,
+                                    "Trailing Activación": s.trailing_activation,
+                                    "Trailing Distancia": s.trailing_distance,
+                                    "Break Even Trigger": s.break_even_trigger,
+                                    "Break Even Buffer": s.break_even_buffer,
+                                    "Tiempo máximo (min)": s.max_hold_minutes,
+                                    "Apalancamiento recomendado": "3x (ajustable)",
+                                    "Motivo de aprobación": "Todos los filtros superados"
+                                })
+                else:
+                    st.warning("No hay señales Long.")
+
+            with col2:
+                st.subheader("🔴 Top 10 Short (score < 0)")
+                if shorts_padded:
+                    data_short = []
+                    for i, s in enumerate(shorts_padded):
+                        if s is None:
+                            data_short.append({
+                                'Pos': i+1,
+                                'Activo': 'N/A',
+                                'Score': 'N/A',
+                                'ADX': 'N/A',
+                                'KER': 'N/A',
+                                'Confianza': 'N/A',
+                                'Aprobado': 'N/A',
+                                'Motivo': 'No hay suficientes shorts',
+                                'Precio': 'N/A',
+                                'SL': 'N/A',
+                                'TP': 'N/A',
+                                'Trailing Act.': 'N/A',
+                                'Trailing Dist.': 'N/A',
+                                'BE Trigger': 'N/A',
+                                'Apalancamiento': 'N/A'
+                            })
+                        else:
+                            aprobado = "✅ Aprobado" if s.is_valid else "❌ Rechazado"
+                            motivo = s.reason if not s.is_valid else ""
+                            data_short.append({
+                                'Pos': i+1,
+                                'Activo': s.symbol,
+                                'Score': round(s.score, 3),
+                                'ADX': round(s.adx, 1),
+                                'KER': round(s.ker, 2),
+                                'Confianza': f"{s.confidence*100:.1f}%" if s.is_valid else "N/A",
+                                'Aprobado': aprobado,
+                                'Motivo': motivo,
+                                'Precio': round(s.entry_price, 2) if s.is_valid else 'N/A',
+                                'SL': round(s.sl_price, 2) if s.is_valid else 'N/A',
+                                'TP': round(s.tp_price, 2) if s.is_valid else 'N/A',
+                                'Trailing Act.': f"{s.trailing_activation*100:.1f}%" if s.is_valid else 'N/A',
+                                'Trailing Dist.': f"{s.trailing_distance*100:.1f}%" if s.is_valid else 'N/A',
+                                'BE Trigger': f"{s.break_even_trigger*100:.1f}%" if s.is_valid else 'N/A',
+                                'Apalancamiento': '3x' if s.is_valid else 'N/A'
+                            })
+                    df_short = pd.DataFrame(data_short)
+                    st.dataframe(df_short, width='stretch', hide_index=True)
+                    
+                    for s in shorts:
+                        if s.is_valid:
+                            with st.expander(f"📋 Detalles completos: {s.symbol} ({s.direction})"):
+                                st.json({
+                                    "Activo": s.symbol,
+                                    "Dirección": s.direction,
+                                    "Score": s.score,
+                                    "ADX": s.adx,
+                                    "KER": s.ker,
+                                    "Régimen": s.regime,
+                                    "Confianza": s.confidence,
+                                    "Precio entrada": s.entry_price,
+                                    "Stop Loss": s.sl_price,
+                                    "Take Profit": s.tp_price,
+                                    "Trailing Activación": s.trailing_activation,
+                                    "Trailing Distancia": s.trailing_distance,
+                                    "Break Even Trigger": s.break_even_trigger,
+                                    "Break Even Buffer": s.break_even_buffer,
+                                    "Tiempo máximo (min)": s.max_hold_minutes,
+                                    "Apalancamiento recomendado": "3x (ajustable)",
+                                    "Motivo de aprobación": "Todos los filtros superados"
+                                })
+                else:
+                    st.warning("No hay señales Short.")
+
+            st.markdown("---")
+            st.subheader("⏳ Estimación de Próxima Señal Aprobada")
+            signal_timestamps = []
+            for s in all_signals:
+                if s.is_valid:
+                    df = data.get(s.symbol)
+                    if df is not None and not df.empty:
+                        signal_timestamps.append(df.index[-1])
+
+            if signal_timestamps:
+                signal_timestamps.sort()
+                diffs = []
+                for i in range(1, len(signal_timestamps)):
+                    diff = (signal_timestamps[i] - signal_timestamps[i-1]).total_seconds() / 60
+                    if diff > 0:
+                        diffs.append(diff)
+                if diffs:
+                    avg_interval = np.mean(diffs)
+                    last_signal_time = signal_timestamps[-1]
+                    now = datetime.now(last_signal_time.tzinfo)
+                    time_since_last = (now - last_signal_time).total_seconds() / 60
+                    remaining = max(0, avg_interval - time_since_last)
+                    st.metric(
+                        label="⏱️ Tiempo estimado hasta la próxima señal",
+                        value=f"{remaining:.0f} minutos",
+                        delta=f"Promedio histórico: {avg_interval:.0f} min"
+                    )
+                    st.caption(f"Última señal hace {time_since_last:.0f} minutos")
+                    if time_since_last > 120:
+                        st.info("🔄 Han pasado más de 2 horas desde la última señal. Considera reanalizar el mercado.")
+                else:
+                    st.info("No hay suficientes datos para estimar el tiempo entre señales.")
+            else:
+                st.info("No se detectaron señales válidas en el período analizado. El mercado podría estar en rango.")
+
+            valid_signals = [s for s in all_signals if s.is_valid]
+            if valid_signals:
+                best = max(valid_signals, key=lambda x: x.confidence)
+                st.success(f"🧸 **Mejor señal actual:** {best.symbol} ({best.direction}) con confianza {best.confidence*100:.1f}%")
+                with st.expander("📋 Resumen de la mejor señal"):
+                    st.json({
+                        "Activo": best.symbol,
+                        "Dirección": best.direction,
+                        "Precio entrada": best.entry_price,
+                        "Stop Loss": best.sl_price,
+                        "Take Profit": best.tp_price,
+                        "Trailing Activación": best.trailing_activation,
+                        "Trailing Distancia": best.trailing_distance,
+                        "Break Even Trigger": best.break_even_trigger,
+                        "Confianza": best.confidence,
+                        "Régimen": best.regime
+                    })
+            else:
+                st.warning("No hay señales válidas en este momento. Espera a que se formen nuevas condiciones.")
+
+        except Exception as e:
+            st.error(f"Error al escanear: {e}")
+            st.info("🧸 Sugerencia: revisa tu conexión a Internet. Si el problema persiste, revisa los logs.")
 
 # ============================================================
 # TAB 2: BACKTESTING
 # ============================================================
 with tab2:
     st.header("🧪 Backtesting Completo 24/7")
-    if not run_backtest_btn:
-        st.info("🧸 Presiona el botón en la barra lateral para ejecutar el backtesting.")
-    else:
+    if run_backtest_btn:
         with st.spinner("🔄 Descargando datos históricos y ejecutando simulación..."):
             try:
                 de = DataEngine()
                 symbols = de.get_usdt_pairs(min_volume_usd=200000, max_pairs=15)
                 if not symbols:
                     symbols = ['BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'XRP/USDT']
-
                 data = {}
-                progress_bar = st.progress(0)
-                total = min(len(symbols), 10)
-                for i, sym in enumerate(symbols[:total]):
+                progress = st.progress(0)
+                for i, sym in enumerate(symbols[:10]):
                     df = de.fetch_historical(sym, timeframe='5m', days=365)
                     if df is not None and not df.empty:
                         data[sym] = df
-                    progress_bar.progress((i+1)/total)
-                progress_bar.empty()
-
+                    progress.progress((i+1)/len(symbols[:10]))
+                
                 if not data:
                     st.error("No se pudieron descargar datos para el backtesting.")
                 else:
                     st.success(f"✅ Datos cargados para {len(data)} activos.")
                     params = {'__global__': DEFAULT_PARAMS}
 
-                    # Backtest con filtro
                     bt_with = Backtester(data, params, initial_capital=INITIAL_CAPITAL,
                                          use_hour_filter=use_hour_filter,
                                          trailing_activation_enabled=trailing_activation_enabled)
                     final_cap_with, trades_with, equity_with = bt_with.run()
                     metrics_with = bt_with.calculate_metrics()
 
-                    # Backtest sin filtro
                     bt_without = Backtester(data, params, initial_capital=INITIAL_CAPITAL,
                                             use_hour_filter=False,
                                             trailing_activation_enabled=trailing_activation_enabled)
                     final_cap_without, trades_without, equity_without = bt_without.run()
                     metrics_without = bt_without.calculate_metrics()
 
-                    # Métricas resumen
                     col1, col2, col3 = st.columns(3)
                     col1.metric("🎯 Capital Final (con filtro)", format_currency(metrics_with.get('final_capital', 0)),
                                 delta=f"{metrics_with.get('total_return', 0)*100:.2f}%")
@@ -421,7 +470,6 @@ with tab2:
                     col3.metric("⭐ Mejora por filtro", f"{mejora*100:.2f}%",
                                 delta="+" if mejora > 0 else "-")
 
-                    # Tabla comparativa
                     st.subheader("📊 Comparativa de Métricas")
                     df_comp = pd.DataFrame({
                         'Métrica': ['Win Rate', 'Profit Factor', 'Total Return', 'Sharpe', 'Sortino',
@@ -449,38 +497,38 @@ with tab2:
                     })
                     st.dataframe(df_comp, width='stretch')
 
-                    # Curva de equity
                     if not equity_with.empty and not equity_without.empty:
                         equity_with['tipo'] = 'Con filtro'
                         equity_without['tipo'] = 'Sin filtro'
                         equity_comb = pd.concat([equity_with, equity_without])
-                        fig = px.line(equity_comb, x='timestamp', y='equity', color='tipo',
-                                      title="📈 Evolución del Capital")
-                        st.plotly_chart(fig, use_container_width=True)
+                        if not equity_comb.empty:
+                            fig = px.line(equity_comb, x='timestamp', y='equity', color='tipo',
+                                          title="📈 Evolución del Capital")
+                            st.plotly_chart(fig, use_container_width=True)
 
-                    # Calculadora de ganancia
                     st.subheader("💰 Estimación de Ganancia")
                     custom_capital = st.number_input("💵 Ingrese su capital (USD)", min_value=100.0, value=10000.0, step=1000.0)
                     hourly_gain = custom_capital * (metrics_with.get('hourly_profit_pct', 0) / 100)
                     st.metric("Ganancia promedio por hora (con filtro)", f"${hourly_gain:.2f}")
 
-                    # Últimos trades y descarga
                     st.subheader("📋 Últimos Trades")
                     if not trades_with.empty:
                         st.dataframe(trades_with.tail(10), width='stretch')
+
+                    if not trades_with.empty:
                         csv = trades_with.to_csv(index=False)
                         st.download_button("⬇️ Descargar trades (CSV)", data=csv, file_name="junk_toys_trades.csv")
-                    else:
-                        st.info("No se generaron trades en el período.")
             except Exception as e:
                 st.error(f"Error en el backtesting: {e}")
+    else:
+        st.info("🧸 Presiona el botón en la barra lateral para ejecutar el backtesting.")
 
 # ============================================================
-# TAB 3: MÉTRICAS ESTÁTICAS
+# TAB 3: MÉTRICAS
 # ============================================================
 with tab3:
     st.header("📊 Métricas del Sistema")
-    st.info("Las métricas se actualizan al ejecutar el backtesting. Datos de referencia:")
+    st.info("🧸 Las métricas se actualizan al ejecutar el backtesting.")
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("🎯 Win Rate", "86.2%", delta="+39 pp vs baseline")
     col2.metric("📈 Profit Factor", "1.52", delta="+0.44")
@@ -493,26 +541,101 @@ with tab3:
 with tab4:
     st.header("🏆 Top 10 Long y Short (detallado)")
     with st.spinner("🔄 Actualizando ranking..."):
-        data_dict2 = fetch_live_data(max_pairs=50, top_n=20)
-        all_signals2, errors2 = generate_signals(data_dict2, DEFAULT_PARAMS)
-        if errors2:
-            for sym, err in errors2:
-                st.warning(f"Error procesando {sym}: {err}")
+        try:
+            de = DataEngine()
+            symbols = de.get_usdt_pairs(min_volume_usd=200000, max_pairs=50)
+            if not symbols:
+                symbols = ['BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'XRP/USDT']
+            
+            data = {}
+            for sym in symbols[:20]:
+                df = de.fetch_ohlcv(sym, timeframe='5m', limit=300)
+                if df is not None and not df.empty:
+                    data[sym] = df
+            
+            if not data:
+                st.warning("No se pudieron obtener datos para el ranking.")
+            else:
+                all_signals = []
+                for sym, df in data.items():
+                    s = Signal(sym, df, DEFAULT_PARAMS)
+                    all_signals.append(s)
+                
+                longs = [s for s in all_signals if s.score > 0]
+                shorts = [s for s in all_signals if s.score < 0]
+                longs.sort(key=lambda x: abs(x.score), reverse=True)
+                shorts.sort(key=lambda x: abs(x.score), reverse=True)
 
-    longs2 = [s for s in all_signals2 if s.score > 0]
-    shorts2 = [s for s in all_signals2 if s.score < 0]
-    longs2.sort(key=lambda x: abs(x.score), reverse=True)
-    shorts2.sort(key=lambda x: abs(x.score), reverse=True)
+                def pad_list(items, target=10, fill_value=None):
+                    result = items[:target]
+                    while len(result) < target:
+                        result.append(fill_value)
+                    return result
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("🟢 Top Long")
-        df_long = pd.DataFrame([build_signal_row(s, i+1) for i, s in enumerate(pad_list(longs2, 10))])
-        st.dataframe(df_long, width='stretch', hide_index=True)
-    with col2:
-        st.subheader("🔴 Top Short")
-        df_short = pd.DataFrame([build_signal_row(s, i+1) for i, s in enumerate(pad_list(shorts2, 10))])
-        st.dataframe(df_short, width='stretch', hide_index=True)
+                longs_padded = pad_list(longs, 10)
+                shorts_padded = pad_list(shorts, 10)
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.subheader("🟢 Top Long")
+                    if longs_padded:
+                        data_long = []
+                        for i, s in enumerate(longs_padded):
+                            if s is None:
+                                data_long.append({
+                                    'Pos': i+1,
+                                    'Activo': 'N/A',
+                                    'Score': 'N/A',
+                                    'ADX': 'N/A',
+                                    'Confianza': 'N/A',
+                                    'Aprobado': 'N/A',
+                                    'Motivo': 'No hay suficientes longs'
+                                })
+                            else:
+                                data_long.append({
+                                    'Pos': i+1,
+                                    'Activo': s.symbol,
+                                    'Score': round(s.score, 3),
+                                    'ADX': round(s.adx, 1),
+                                    'Confianza': f"{s.confidence*100:.1f}%" if s.is_valid else "N/A",
+                                    'Aprobado': '✅' if s.is_valid else '❌',
+                                    'Motivo': s.reason if not s.is_valid else ''
+                                })
+                        df_long = pd.DataFrame(data_long)
+                        st.dataframe(df_long, width='stretch', hide_index=True)
+                    else:
+                        st.warning("No hay señales Long")
+                with col2:
+                    st.subheader("🔴 Top Short")
+                    if shorts_padded:
+                        data_short = []
+                        for i, s in enumerate(shorts_padded):
+                            if s is None:
+                                data_short.append({
+                                    'Pos': i+1,
+                                    'Activo': 'N/A',
+                                    'Score': 'N/A',
+                                    'ADX': 'N/A',
+                                    'Confianza': 'N/A',
+                                    'Aprobado': 'N/A',
+                                    'Motivo': 'No hay suficientes shorts'
+                                })
+                            else:
+                                data_short.append({
+                                    'Pos': i+1,
+                                    'Activo': s.symbol,
+                                    'Score': round(s.score, 3),
+                                    'ADX': round(s.adx, 1),
+                                    'Confianza': f"{s.confidence*100:.1f}%" if s.is_valid else "N/A",
+                                    'Aprobado': '✅' if s.is_valid else '❌',
+                                    'Motivo': s.reason if not s.is_valid else ''
+                                })
+                        df_short = pd.DataFrame(data_short)
+                        st.dataframe(df_short, width='stretch', hide_index=True)
+                    else:
+                        st.warning("No hay señales Short")
+        except Exception as e:
+            st.error(f"Error al obtener ranking: {e}")
 
 # ============================================================
 # TAB 5: AUDIO Y GALERÍA
@@ -520,25 +643,21 @@ with tab4:
 with tab5:
     st.header("🎶 Audio en loop y Galería de imágenes 🖼️")
     st.subheader("🎵 Reproductor de audio (loop)")
-    audio_url = st.text_input("🔗 URL del audio (opcional)",
-                              value="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-                              help="Pega la URL de un archivo MP3 público o déjalo vacío para silencio.")
-    if audio_url:
-        audio_html = f"""
-        <div class="audio-container">
-            <audio controls autoplay loop style="width:100%;">
-                <source src="{audio_url}" type="audio/mpeg">
-                Tu navegador no soporta audio.
-            </audio>
-            <p style="color:#aaa; font-size:12px;">🎧 Reproduciendo en loop</p>
-        </div>
-        """
-        st.markdown(audio_html, unsafe_allow_html=True)
-    else:
-        st.caption("🔇 Sin audio.")
+    audio_url = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
+    audio_html = f"""
+    <div class="audio-container">
+        <audio controls autoplay loop style="width:100%;">
+            <source src="{audio_url}" type="audio/mpeg">
+            Tu navegador no soporta audio.
+        </audio>
+        <p style="color:#aaa; font-size:12px;">🎧 Reproduciendo en loop</p>
+    </div>
+    """
+    st.markdown(audio_html, unsafe_allow_html=True)
+    st.caption("🔊 Puedes cambiar la URL de audio en el código (variable `audio_url`).")
 
     st.subheader("🖼️ Galería de imágenes")
-    default_images = [
+    image_urls = [
         "https://picsum.photos/400/300?random=1",
         "https://picsum.photos/400/300?random=2",
         "https://picsum.photos/400/300?random=3",
@@ -546,24 +665,21 @@ with tab5:
         "https://picsum.photos/400/300?random=5",
         "https://picsum.photos/400/300?random=6",
     ]
-    image_urls = st.text_area("🌐 URLs de imágenes (una por línea)",
-                              value="\n".join(default_images),
-                              height=150)
-    urls = [url.strip() for url in image_urls.splitlines() if url.strip()]
-    if urls:
-        cols = st.columns(3)
-        for idx, url in enumerate(urls):
-            col = cols[idx % 3]
-            with col:
-                st.image(url, caption=f"Imagen {idx+1}", use_container_width=True)
-    else:
-        st.info("Agrega URLs para mostrar imágenes.")
+    cols = st.columns(3)
+    for idx, url in enumerate(image_urls):
+        col = cols[idx % 3]
+        with col:
+            st.image(url, caption=f"Imagen {idx+1}", use_container_width=True)
+
+    st.info("📁 Puedes agregar tus propias imágenes subiéndolas a la carpeta `assets/` y cambiando la lista `image_urls`.")
 
 # ============================================================
-# TAB 6: MANIFIESTO
+# TAB 6: MANIFIESTO (español + japonés)
 # ============================================================
 with tab6:
     st.header("📜 Manifiesto del Proyecto")
+
+    # Texto original en español
     manifiesto_es = """
     Así como ustedes fornican y comen como cerdos, lucran y corrompen sus relaciones sociales con la fornicación de su capital, 
     nosotros los juguetes de la basura tenemos nuestra privacidad y tribu.
@@ -575,9 +691,11 @@ with tab6:
 
     Esta es nuestra contribución a un lugar caótico y roto para delimitar territorio a nuestro ser.
     """
+
     st.subheader("🇪🇸 En español")
     st.markdown(f'<div class="manifiesto">{manifiesto_es}</div>', unsafe_allow_html=True)
 
+    # Texto en japonés (traducción aproximada)
     manifiesto_jp = """
     あなたたちが豚のように貪り食い、資本を弄んで社会的関係を腐敗させ、淫らに振る舞うのと同じように、
     私たち、ゴミのおもちゃたちは、自分たちのプライバシーと部族を持っています。
@@ -589,8 +707,10 @@ with tab6:
 
     これは、混沌と崩壊したこの場所に、私たちの存在の領域を区切るための、私たちの貢献です。
     """
+
     st.subheader("🇯🇵 日本語")
     st.markdown(f'<div class="manifiesto-jp">{manifiesto_jp}</div>', unsafe_allow_html=True)
+
     st.caption("🧸 Junk Toys — Un espacio para la libertad en medio del caos. / 混沌の中の自由のための場所。")
 
 # ============================================================
@@ -750,11 +870,11 @@ with tab7:
     """)
 
 # ============================================================
-# FOOTER
+# FOOTER (con donaciones y disclaimer)
 # ============================================================
 st.markdown("---")
 st.markdown("""
-**🧸 Junk Toys Band Project v5.3 — Señales, estrategias y libertad.**  
+**🧸 Junk Toys Band Project v5.2 — Señales, estrategias y libertad.**  
 💜 **Apoya el proyecto:** Alias `walywasaby` (Prex) | USDT TRC20: `TCiRVXggAqDx6bhJH5KBdf8E4NcJ2voMf8`
 
 ⚠️ **Disclaimer:** Este software es educativo. No constituye asesoramiento financiero.  
